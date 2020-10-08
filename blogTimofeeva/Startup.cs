@@ -1,13 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using blogTimofeeva.Domain.DB;
+using blogTimofeeva.Domain.Model;
+using blogTimofeeva.Infrastructure;
+using blogTimofeeva.Infrastructure.Guarantors;
+using blogTimofeeva.Options;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.HttpsPolicy;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System;
 
 namespace blogTimofeeva
 {
@@ -24,11 +27,46 @@ namespace blogTimofeeva
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllersWithViews();
+            services.Configure<ServerInformation>(Configuration.GetSection("ServerInfomation"));
+            services.AddDbContext<BlogDbContext>(options =>
+                options.UseNpgsql("Username=ksenia; Database=blogTimofeeva; Password=ksenia; Host=localhost"));
+            services.AddIdentity<User, IdentityRole<int>>(options =>
+            {
+                options.Password.RequireLowercase = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireDigit = false;
+            }).AddEntityFrameworkStores<BlogDbContext>();
+
+            //Добавление безопасности
+            services.AddControllersWithViews();
+
+            var serviceProvider = services.BuildServiceProvider();
+            var guarantor = new SeedDataGuarantor(serviceProvider);
+            guarantor.EnsureAsync();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            using (var scope=app.ApplicationServices.CreateScope())
+            {
+                var guarantors = scope.ServiceProvider.GetServices<IStartupPreConditionGuarantor>();
+                try
+                {
+                    Console.WriteLine("Startup guarantors started");
+                    foreach (var guarantor in guarantors)
+                        guarantor.Ensure(scope.ServiceProvider);
+
+                    Console.WriteLine("Startup guarantors executed successfuly");
+                }
+                catch (StartupPreConditionException)
+                {
+                    Console.WriteLine("Startup guarantors  failed");
+                    throw;
+                }
+
+            }
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -44,6 +82,7 @@ namespace blogTimofeeva
 
             app.UseRouting();
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
@@ -52,6 +91,11 @@ namespace blogTimofeeva
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}");
             });
+
+            app.UseRouting();
+
+
+            
         }
     }
 }
