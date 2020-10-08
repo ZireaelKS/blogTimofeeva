@@ -92,10 +92,6 @@ namespace blogTimofeeva
                     pattern: "{controller=Home}/{action=Index}/{id?}");
             });
 
-            app.UseRouting();
-
-
-            
         }
     }
 }
